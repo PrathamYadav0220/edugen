@@ -16,6 +16,15 @@ PROVIDER = "Groq"
 SYSTEM_PROMPT = "Act as a smart and friendly AI"
 ALLOW_SEARCH = False
 
+# Predefined voice IDs (you can add more as needed)
+VOICE_IDS = {
+    "Rachel": "21m00Tcm4TlvDq8ikWAM",
+    "Domi": "AZnzlk1XvdvUeBnXmlld",
+    "Bella": "EXAVITQu4vr4xnSDxMaL",
+    "Elli": "MF3mGyEYCl7XYWbV9V6O",
+    "Adam": "pNInz6obpgDQGcFmaJgB",
+    "Aria": "EXAVITQu4vr4xnSDxMaL"  # Default voice
+}
 
 # ========== SPEECH TO TEXT ==========
 def record_and_transcribe():
@@ -31,7 +40,7 @@ def record_and_transcribe():
         audio_segment = AudioSegment.from_wav(BytesIO(wav_data))
         audio_segment.export("user_input.mp3", format="mp3")
 
-        # Transcribe using Whisper via local or external model
+        # Transcribe using Google Speech Recognition
         text = recognizer.recognize_google(audio)
         print(f"📝 You said: {text}")
         return text
@@ -52,24 +61,38 @@ def ask_ai_agent(user_text):
     try:
         response = requests.post(API_URL, json=payload)
         if response.status_code == 200:
-            return response.json()
+            # Extract the response text
+            response_data = response.json()
+            return response_data.get("response", "")
         else:
             print(f"❌ Error: {response.text}")
+            return ""
     except Exception as e:
         print(f"❌ Failed to reach backend: {e}")
+        return ""
 
 
 # ========== TEXT TO SPEECH ==========
-def speak_with_elevenlabs(text, voice="Aria", output_path="response.mp3"):
+def speak_with_elevenlabs(text, voice_name="Aria", output_path="response.mp3"):
     try:
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-        audio = client.generate(
+        
+        # Get voice ID from name
+        voice_id = VOICE_IDS.get(voice_name, VOICE_IDS["Aria"])
+        
+        # Generate audio with the new SDK syntax
+        audio = client.text_to_speech.convert(
+            voice_id=voice_id,
+            model_id="eleven_turbo_v2",
             text=text,
-            voice=voice,
-            output_format="mp3_22050_32",
-            model="eleven_turbo_v2"
+            output_format="mp3_22050_32"
         )
-        save(audio, output_path)
+        
+        # Save audio chunks to file
+        with open(output_path, "wb") as f:
+            for chunk in audio:
+                if chunk:
+                    f.write(chunk)
 
         # Play audio
         os_name = platform.system()
@@ -81,8 +104,11 @@ def speak_with_elevenlabs(text, voice="Aria", output_path="response.mp3"):
             subprocess.run(['mpg123', output_path])
         else:
             print("⚠️ Unknown OS, cannot auto-play.")
+            
+        return output_path
     except Exception as e:
         print(f"❌ Error in TTS: {e}")
+        return None
 
 
 # ========== MAIN WORKFLOW ==========
@@ -92,7 +118,10 @@ def main():
         bot_response = ask_ai_agent(user_input)
         if bot_response:
             print(f"🤖 Bot says: {bot_response}")
-            speak_with_elevenlabs(bot_response)
+            # Use Rachel as the default voice
+            audio_file = speak_with_elevenlabs(bot_response, voice_name="Rachel")
+            if audio_file:
+                print(f"🔊 Audio response saved to: {audio_file}")
 
 
 if __name__ == "__main__":
